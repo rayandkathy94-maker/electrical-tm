@@ -183,6 +183,31 @@ const materialData = {
 };
 
 const wireColors = ["Black","Red","Blue","White","Green","Brown","Orange","Yellow","Gray","Purple","Pink","Other"];
+
+const manufacturerData = {
+  "Conduit":["Allied Tube & Conduit","Wheatland Tube","Republic Conduit","Carlon","Cantex","Southwire","AFC Cable Systems","Electri-Flex","Other"],
+  "Conduit Fittings":["Bridgeport","Arlington","RACO","Steel City","Appleton","Crouse-Hinds","O-Z/Gedney","Thomas & Betts","Carlon","Cantex","Other"],
+  "Boxes":["RACO","Steel City","Appleton","Crouse-Hinds","Arlington","Carlon","Hubbell","Pass & Seymour / Legrand","Other"],
+  "Covers":["RACO","Steel City","Arlington","Hubbell","Bell","TayMac","Pass & Seymour / Legrand","Other"],
+  "Wire":["Southwire","Encore Wire","Cerrowire","General Cable / Prysmian","Service Wire","Nexans","Other"],
+  "Cable":["Southwire","Encore Wire","Cerrowire","AFC Cable Systems","General Cable / Prysmian","Belden","Carol","Other"],
+  "Devices":["Leviton","Hubbell","Pass & Seymour / Legrand","Eaton","Bryant","Lutron","Cooper Wiring Devices","Other"],
+  "Plates":["Leviton","Hubbell","Pass & Seymour / Legrand","Eaton","Bryant","Lutron","TayMac","Other"],
+  "Breakers":["Square D / Schneider Electric","Eaton / Cutler-Hammer","Siemens","GE / ABB","Milbank","Other"],
+  "Panels & Distribution":["Square D / Schneider Electric","Eaton","Siemens","GE / ABB","Milbank","Generac","ASCO","Russelectric","Other"],
+  "Fuses":["Bussmann / Eaton","Mersen / Ferraz Shawmut","Littelfuse","Other"],
+  "Motor & Industrial":["Allen-Bradley","Square D / Schneider Electric","Siemens","Eaton","ABB","GE","AutomationDirect","WEG","Fuji Electric","Yaskawa","Other"],
+  "Lighting":["Lithonia / Acuity","Cooper Lighting","Hubbell Lighting","RAB","Halo","Cree","Philips / Signify","Leviton","Lutron","Other"],
+  "Supports":["Caddy / nVent","Minerallac","Arlington","Bridgeport","B-Line / Eaton","Unistrut","Other"],
+  "Strut & Hardware":["Unistrut","B-Line / Eaton","Superstrut / ABB","Caddy / nVent","Hilti","Simpson Strong-Tie","Powers / DeWalt","Other"],
+  "Grounding & Bonding":["Burndy","Ilsco","Thomas & Betts / ABB","Blackburn / ABB","Erico / nVent","Harger","Other"],
+  "Splicing & Terminations":["Ideal","3M","Wago","Burndy","Ilsco","Polaris","Thomas & Betts / ABB","Panduit","Other"],
+  "Low Voltage & Data":["Panduit","Leviton","Hubbell","Belden","CommScope","Southwire","Ideal","Klein Tools","Other"],
+  "Residential":["Leviton","Hubbell","Pass & Seymour / Legrand","Eaton","Lutron","Broan-NuTone","Kidde","First Alert","Other"],
+  "Fasteners & Consumables":["3M","Ideal","Gardner Bender","Panduit","Hilti","Caddy / nVent","Southwire","Other"],
+  "Miscellaneous":["Other"]
+};
+
 let jobCount = 0;
 
 function setToday(){
@@ -295,6 +320,9 @@ function addMaterial(jobId, isReturn){
     <label>Size</label>
     <select class="size"></select>
 
+    <label>Manufacturer / Brand</label>
+    <select class="manufacturer"></select>
+
     <div class="wire-extra" style="display:none;">
       <label>Wire Color</label>
       <select class="wireColor"></select>
@@ -367,12 +395,21 @@ function updateMaterialRow(selectEl){
 
   item.innerHTML = "";
   size.innerHTML = "";
+  const manufacturer = row.querySelector(".manufacturer");
+  manufacturer.innerHTML = "";
 
   materialData[cat].items.forEach(v => {
     const o = document.createElement("option"); o.value=v; o.textContent=v; item.appendChild(o);
   });
   materialData[cat].sizes.forEach(v => {
     const o = document.createElement("option"); o.value=v; o.textContent=v; size.appendChild(o);
+  });
+
+  (manufacturerData[cat] || ["Other"]).forEach(v => {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    manufacturer.appendChild(o);
   });
 
   wireExtra.style.display = (cat === "Wire") ? "block" : "none";
@@ -451,8 +488,9 @@ function readMaterialRows(containerId){
     const unit = row.querySelector(".unit").value;
     const custom = row.querySelector(".custom").value;
     const color = row.querySelector(".wireColor")?.value || "";
+    const manufacturer = row.querySelector(".manufacturer")?.value || "";
     rows.push({
-      qty, cat, item, size, unit, custom,
+      qty, cat, item, size, unit, custom, manufacturer,
       color: cat === "Wire" ? color : ""
     });
   });
@@ -492,14 +530,14 @@ function makeReport(){
     const used = readMaterialRows(`materials-${id}`);
     if(!used.length) lines.push("- None entered");
     used.forEach(m => {
-      lines.push(`- ${m.qty} ${m.unit} | ${m.cat} | ${m.item} | ${m.size}${m.color ? " | " + m.color : ""}${m.custom ? " | " + m.custom : ""}`);
+      lines.push(`- ${m.qty} ${m.unit} | ${m.cat} | ${m.item} | ${m.size}${m.manufacturer ? " | " + m.manufacturer : ""}${m.color ? " | " + m.color : ""}${m.custom ? " | " + m.custom : ""}`);
     });
     lines.push("");
     lines.push("Return-Trip Materials Needed:");
     const ret = readMaterialRows(`returnMaterials-${id}`);
     if(!ret.length) lines.push("- None entered");
     ret.forEach(m => {
-      lines.push(`- ${m.qty} ${m.unit} | ${m.cat} | ${m.item} | ${m.size}${m.color ? " | " + m.color : ""}${m.custom ? " | " + m.custom : ""}`);
+      lines.push(`- ${m.qty} ${m.unit} | ${m.cat} | ${m.item} | ${m.size}${m.manufacturer ? " | " + m.manufacturer : ""}${m.color ? " | " + m.color : ""}${m.custom ? " | " + m.custom : ""}`);
     });
     lines.push("");
     lines.push("Job Notes:");
