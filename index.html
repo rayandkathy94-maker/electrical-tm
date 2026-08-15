@@ -57,6 +57,7 @@
     <input id="employee" placeholder="Your name" oninput="saveEmployeeName()">
     <label>Date</label>
     <input id="date" type="date">
+    <div id="saveStatus" class="muted" style="margin-top:10px;">Auto-save ready</div>
   </div>
 
   <div class="card">
@@ -209,6 +210,183 @@ const manufacturerData = {
 };
 
 let jobCount = 0;
+let isRestoring = false;
+let saveTimer = null;
+const DAILY_SAVE_KEY = "electricalTMCurrentDayV10";
+
+
+function setSaveStatus(message){
+  const el = document.getElementById("saveStatus");
+  if(el) el.textContent = message;
+}
+
+function materialRowToData(row){
+  return {
+    cat: row.querySelector(".cat")?.value || "",
+    item: row.querySelector(".item")?.value || "",
+    size: row.querySelector(".size")?.value || "",
+    manufacturer: row.querySelector(".manufacturer")?.value || "",
+    wireColor: row.querySelector(".wireColor")?.value || "",
+    qty: row.querySelector(".qty")?.value || "",
+    unit: row.querySelector(".unit")?.value || "",
+    custom: row.querySelector(".custom")?.value || ""
+  };
+}
+
+function getMaterialData(containerId){
+  return Array.from(document.querySelectorAll(`#${containerId} .material-row`))
+    .map(materialRowToData);
+}
+
+function collectDayData(){
+  const jobs = [];
+
+  document.querySelectorAll(".job").forEach(job => {
+    const id = job.id.split("-")[1];
+
+    jobs.push({
+      jobName: val(`jobName-${id}`),
+      jobNumber: val(`jobNumber-${id}`),
+      jobLocation: val(`jobLocation-${id}`),
+      start: val(`start-${id}`),
+      end: val(`end-${id}`),
+      lunch: val(`lunch-${id}`),
+      reg: val(`reg-${id}`),
+      ot: val(`ot-${id}`),
+      total: val(`total-${id}`),
+      work: val(`work-${id}`),
+      status: val(`status-${id}`),
+      jobNotes: val(`jobNotes-${id}`),
+      materials: getMaterialData(`materials-${id}`),
+      returnMaterials: getMaterialData(`returnMaterials-${id}`)
+    });
+  });
+
+  return {
+    version: 10,
+    employee: val("employee"),
+    date: val("date"),
+    notes: val("notes"),
+    jobs
+  };
+}
+
+function saveCurrentDay(){
+  if(isRestoring) return;
+
+  try {
+    const data = collectDayData();
+    localStorage.setItem(DAILY_SAVE_KEY, JSON.stringify(data));
+    setSaveStatus("Saved automatically");
+  } catch(err) {
+    setSaveStatus("Auto-save unavailable");
+  }
+}
+
+function scheduleAutoSave(){
+  if(isRestoring) return;
+  clearTimeout(saveTimer);
+  setSaveStatus("Saving...");
+  saveTimer = setTimeout(saveCurrentDay, 350);
+}
+
+function setSelectValue(select, value){
+  if(!select || value === undefined || value === null) return;
+  const exists = Array.from(select.options).some(o => o.value === value);
+  if(exists) select.value = value;
+}
+
+function restoreMaterial(containerId, material, jobId, isReturn){
+  addMaterial(jobId, isReturn);
+
+  const container = document.getElementById(containerId);
+  const row = container.lastElementChild;
+  if(!row) return;
+
+  const cat = row.querySelector(".cat");
+  setSelectValue(cat, material.cat);
+  updateMaterialRow(cat);
+
+  const item = row.querySelector(".item");
+  setSelectValue(item, material.item);
+  updateSizeForItem(item);
+
+  setSelectValue(row.querySelector(".size"), material.size);
+  setSelectValue(row.querySelector(".manufacturer"), material.manufacturer);
+  setSelectValue(row.querySelector(".wireColor"), material.wireColor);
+  setSelectValue(row.querySelector(".unit"), material.unit);
+
+  const qty = row.querySelector(".qty");
+  const custom = row.querySelector(".custom");
+  if(qty) qty.value = material.qty || "";
+  if(custom) custom.value = material.custom || "";
+}
+
+function restoreSavedDay(){
+  const raw = localStorage.getItem(DAILY_SAVE_KEY);
+  if(!raw) return false;
+
+  try {
+    const data = JSON.parse(raw);
+    if(!data || !Array.isArray(data.jobs)) return false;
+
+    isRestoring = true;
+
+    document.getElementById("jobs").innerHTML = "";
+    jobCount = 0;
+
+    document.getElementById("employee").value =
+      data.employee || localStorage.getItem("electricalEmployeeName") || "";
+
+    if(data.date) document.getElementById("date").value = data.date;
+    document.getElementById("notes").value = data.notes || "";
+
+    data.jobs.forEach(jobData => {
+      addJob();
+      const id = jobCount;
+
+      document.getElementById(`jobName-${id}`).value = jobData.jobName || "";
+      document.getElementById(`jobNumber-${id}`).value = jobData.jobNumber || "";
+      document.getElementById(`jobLocation-${id}`).value = jobData.jobLocation || "";
+      document.getElementById(`start-${id}`).value = jobData.start || "";
+      document.getElementById(`end-${id}`).value = jobData.end || "";
+      document.getElementById(`lunch-${id}`).value = jobData.lunch ?? "30";
+      document.getElementById(`reg-${id}`).value = jobData.reg || "";
+      document.getElementById(`ot-${id}`).value = jobData.ot || "0";
+      document.getElementById(`total-${id}`).value = jobData.total || "";
+      document.getElementById(`work-${id}`).value = jobData.work || "";
+      setSelectValue(document.getElementById(`status-${id}`), jobData.status);
+      document.getElementById(`jobNotes-${id}`).value = jobData.jobNotes || "";
+
+      // Remove the default material row created with each new job,
+      // then rebuild exactly what was saved.
+      document.getElementById(`materials-${id}`).innerHTML = "";
+      document.getElementById(`returnMaterials-${id}`).innerHTML = "";
+
+      (jobData.materials || []).forEach(m =>
+        restoreMaterial(`materials-${id}`, m, id, false)
+      );
+
+      (jobData.returnMaterials || []).forEach(m =>
+        restoreMaterial(`returnMaterials-${id}`, m, id, true)
+      );
+    });
+
+    if(data.jobs.length === 0) addJob();
+
+    calculateDailyTotals();
+    isRestoring = false;
+    setSaveStatus("Saved day restored");
+    return true;
+  } catch(err) {
+    isRestoring = false;
+    return false;
+  }
+}
+
+function clearSavedDay(){
+  localStorage.removeItem(DAILY_SAVE_KEY);
+}
 
 function setToday(){
   const d = new Date();
@@ -294,12 +472,15 @@ function addJob(){
   regEl.addEventListener("input", calculateDailyTotals);
   otEl.addEventListener("input", calculateDailyTotals);
   calcBtn.addEventListener("click", () => calcJobHours(id, true));
+
+  if(!isRestoring) scheduleAutoSave();
 }
 
 function removeJob(id){
   const el = document.getElementById(`job-${id}`);
   if(el) el.remove();
   calculateDailyTotals();
+  scheduleAutoSave();
 }
 
 function addMaterial(jobId, isReturn){
@@ -341,7 +522,7 @@ function addMaterial(jobId, isReturn){
     <label>Custom Description (optional)</label>
     <input class="custom" placeholder="Special item, brand, catalog number, etc.">
 
-    <button class="btn danger no-print" onclick="this.parentElement.remove()">Remove Material</button>
+    <button class="btn danger no-print" onclick="this.parentElement.remove(); scheduleAutoSave();">Remove Material</button>
   `;
   container.appendChild(row);
 
@@ -358,6 +539,7 @@ function addMaterial(jobId, isReturn){
   });
 
   updateMaterialRow(cat);
+  if(!isRestoring) scheduleAutoSave();
 }
 
 function updateSizeForItem(itemSelect){
@@ -461,6 +643,7 @@ function calcJobHours(id, showMessage=false){
   }
 
   calculateDailyTotals();
+  scheduleAutoSave();
 }
 
 function calculateDailyTotals(){
@@ -579,40 +762,65 @@ async function shareReport(){
 function newDay(){
   const employee = document.getElementById("employee").value || localStorage.getItem("electricalEmployeeName") || "";
 
-  // Clear all current jobs and reset counters.
+  clearSavedDay();
+  isRestoring = true;
+
   const jobsContainer = document.getElementById("jobs");
   jobsContainer.innerHTML = "";
   jobCount = 0;
 
-  // Clear daily notes and report preview.
   document.getElementById("notes").value = "";
   document.getElementById("report").textContent = "";
   document.getElementById("reportCard").style.display = "none";
 
-  // Reset daily totals.
   document.getElementById("dailyRegular").value = "0.00";
   document.getElementById("dailyOT").value = "0.00";
   document.getElementById("dailyTotal").value = "0.00";
 
-  // Set today's date again.
   setToday();
 
-  // Keep employee name.
   document.getElementById("employee").value = employee;
   localStorage.setItem("electricalEmployeeName", employee);
 
-  // Create one fresh blank job.
   addJob();
   calculateDailyTotals();
 
-  // Move back to top so the new sheet is obvious on a phone.
+  isRestoring = false;
+  saveCurrentDay();
+  setSaveStatus("New day started and saved");
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 loadEmployeeName();
 setToday();
-addJob();
-calculateDailyTotals();
+
+if(!restoreSavedDay()){
+  addJob();
+  calculateDailyTotals();
+  saveCurrentDay();
+}
+
+// Auto-save nearly every edit, including dynamically created fields.
+document.addEventListener("input", (event) => {
+  if(event.target && event.target.id === "employee"){
+    saveEmployeeName();
+  }
+  scheduleAutoSave();
+});
+
+document.addEventListener("change", () => {
+  scheduleAutoSave();
+});
+
+// Save immediately if Safari sends the page to the background.
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "hidden"){
+    saveCurrentDay();
+  }
+});
+
+window.addEventListener("pagehide", saveCurrentDay);
 </script>
 </body>
 </html>
